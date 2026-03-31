@@ -53,23 +53,22 @@ void generate_hust_email(char *fullname, char *mssv, char *email_out) {
         initials[len+1] = '\0';
     }
     
-    // words[count-1] là Tên chính
-    sprintf(email_out, "%s.%s%s@sis.hust.edu.vn\n", words[count-1], initials, mssv);
+    // Sử dụng snprintf ở đây để an toàn tuyệt đối
+    snprintf(email_out, BUFFER_SIZE, "%s.%s%s@sis.hust.edu.vn\n", words[count-1], initials, mssv);
 }
 
 int main() {
     int master_socket, new_socket, max_sd, sd, activity;
     struct sockaddr_in address;
-    fd_set readfds; // Tập hợp các socket để dùng cho select()
+    fd_set readfds; 
     Client clients[MAX_CLIENTS];
     
-    // Khởi tạo mảng clients bằng 0
+    // Khởi tạo mảng clients
     for (int i = 0; i < MAX_CLIENTS; i++) {
         clients[i].fd = 0;
         clients[i].state = 0;
     }
 
-    // 1. Tạo master socket
     if ((master_socket = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         perror("Socket failed");
         exit(EXIT_FAILURE);
@@ -82,7 +81,6 @@ int main() {
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
 
-    // 2. Bind và Listen
     if (bind(master_socket, (struct sockaddr *)&address, sizeof(address)) < 0) {
         perror("Bind failed");
         exit(EXIT_FAILURE);
@@ -98,39 +96,33 @@ int main() {
     int addrlen = sizeof(address);
     char buffer[BUFFER_SIZE];
 
-    // 3. Vòng lặp chính xử lý nhiều client
     while(1) {
-        // Xóa tập socket và thêm master_socket vào
         FD_ZERO(&readfds);
         FD_SET(master_socket, &readfds);
         max_sd = master_socket;
 
-        // Thêm các socket của clients vào tập readfds
         for (int i = 0; i < MAX_CLIENTS; i++) {
             sd = clients[i].fd;
             if(sd > 0) FD_SET(sd, &readfds);
             if(sd > max_sd) max_sd = sd;
         }
 
-        // Đợi một hoạt động trên một trong các socket (Hàm này block cho đến khi có I/O)
         activity = select(max_sd + 1, &readfds, NULL, NULL, NULL);
 
         if (activity < 0) {
-            printf("Select error");
+            printf("Select error\n");
         }
 
-        // Xử lý kết nối mới (nếu master_socket có tín hiệu)
         if (FD_ISSET(master_socket, &readfds)) {
             if ((new_socket = accept(master_socket, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
                 perror("Accept failed");
                 exit(EXIT_FAILURE);
             }
             
-            // Thêm client mới vào mảng và bắt đầu hỏi tên
             for (int i = 0; i < MAX_CLIENTS; i++) {
                 if (clients[i].fd == 0) {
                     clients[i].fd = new_socket;
-                    clients[i].state = 1; // Chuyển sang trạng thái đợi nhập Tên
+                    clients[i].state = 1; 
                     char *msg = "Vui long nhap Ho Ten (Khong dau): ";
                     send(new_socket, msg, strlen(msg), 0);
                     printf("Client moi ket noi, duoc gan vao vi tri %d\n", i);
@@ -139,40 +131,36 @@ int main() {
             }
         }
 
-        // Xử lý dữ liệu từ các client đã kết nối
         for (int i = 0; i < MAX_CLIENTS; i++) {
             sd = clients[i].fd;
 
             if (FD_ISSET(sd, &readfds)) {
-                int valread = read(sd, buffer, BUFFER_SIZE);
+                int valread = read(sd, buffer, BUFFER_SIZE - 1);
                 
                 if (valread == 0) {
-                    // Client ngắt kết nối
                     getpeername(sd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
                     printf("Client ngat ket noi.\n");
                     close(sd);
                     clients[i].fd = 0;
                     clients[i].state = 0;
                 } else {
-                    buffer[valread] = '\0'; // Kết thúc chuỗi
+                    buffer[valread] = '\0'; 
                     
                     if (clients[i].state == 1) {
-                        // Nhận được Họ Tên, yêu cầu nhập MSSV
                         strcpy(clients[i].name, buffer);
-                        clients[i].state = 2; // Chuyển sang trạng thái đợi nhập MSSV
+                        clients[i].state = 2; 
                         char *msg = "Vui long nhap MSSV: ";
                         send(sd, msg, strlen(msg), 0);
                     } 
                     else if (clients[i].state == 2) {
-                        // Nhận được MSSV, tạo email và trả về
-                        char email[BUFFER_SIZE+64];
+                        // SỬA LẠI CHUẨN KÍCH THƯỚC Ở ĐÂY
+                        char email[BUFFER_SIZE];
                         generate_hust_email(clients[i].name, buffer, email);
                         
-                        char response[BUFFER_SIZE+64];
+                        char response[BUFFER_SIZE + 64]; // Đảm bảo luôn to hơn email
                         snprintf(response, sizeof(response), "Email cua ban la: %s", email);
                         send(sd, response, strlen(response), 0);
                         
-                        // Đóng kết nối sau khi hoàn thành
                         close(sd);
                         clients[i].fd = 0;
                         clients[i].state = 0;
