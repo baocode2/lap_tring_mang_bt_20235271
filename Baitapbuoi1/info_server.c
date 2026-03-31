@@ -44,7 +44,7 @@ int main() {
         recv_exact(new_socket, &dir_len_net, 2);
         uint16_t dir_len = ntohs(dir_len_net);
 
-        char dir_name[1024] = {0};
+        char dir_name[1024] = {0};_
         recv_exact(new_socket, dir_name, dir_len);
         printf("%s\n", dir_name);
 
