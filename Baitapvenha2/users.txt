@@ -1,0 +1,4 @@
+admin admin
+guest nopass
+user1 pass123
+bao 12345
